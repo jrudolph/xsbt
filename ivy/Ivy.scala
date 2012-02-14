@@ -260,8 +260,14 @@ private object IvySbt
 	{
 		val cacheDir = settings.getDefaultRepositoryCacheBasedir()
 		val manager = new DefaultRepositoryCacheManager("default-cache", settings, cacheDir) {
-			override def findModuleInCache(dd: DependencyDescriptor, revId: ModuleRevisionId, options: CacheMetadataOptions, r: String) =
+			override def findModuleInCache(dd: DependencyDescriptor, revId: ModuleRevisionId, options: CacheMetadataOptions, r: String) = {
+				// workaround for https://github.com/harrah/xsbt/issues/368
+				// sbt-plugins' ivy.xml descriptors in the cache are broken
+				// if they are generated from poms
+				// we switch validation for cached ivy.xmls off completely
+				options.setValidate(false)
 				super.findModuleInCache(dd,revId,options,null)
+			}
 		}
 		manager.setArtifactPattern(PluginPattern + manager.getArtifactPattern)
 		manager.setDataFilePattern(PluginPattern + manager.getDataFilePattern)
