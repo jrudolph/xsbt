@@ -183,7 +183,7 @@ object Defaults extends BuildCommon
 		scalaInstance <<= scalaInstanceSetting,
 		scalaVersion in GlobalScope <<= appConfiguration( _.provider.scalaProvider.version),
 		crossScalaVersions in GlobalScope <<= Seq(scalaVersion).join,
-		crossTarget <<= (target, scalaVersion, sbtVersion, sbtPlugin, crossPaths)(makeCrossTarget),
+		crossTarget <<= (target, scalaVersion, sbtVersion in sbtPlugin, sbtPlugin, crossPaths)(makeCrossTarget),
 		cacheDirectory <<= crossTarget / "cache"
 	)
 	def makeCrossTarget(t: File, sv: String, sbtv: String, plugin: Boolean, cross: Boolean): File =
@@ -685,7 +685,7 @@ object Classpaths
 		projectDependencies <<= projectDependenciesTask,
 		libraryDependencies in GlobalScope :== Nil,
 		libraryDependencies <++= (autoScalaLibrary, sbtPlugin, scalaVersion) apply autoLibraryDependency,
-		allDependencies <<= (projectDependencies,libraryDependencies,sbtPlugin,sbtDependency) map { (projDeps, libDeps, isPlugin, sbtDep) =>
+		allDependencies <<= (projectDependencies,libraryDependencies,sbtPlugin,sbtDependency in sbtPlugin) map { (projDeps, libDeps, isPlugin, sbtDep) =>
 			val base = projDeps ++ libDeps
 			if(isPlugin) sbtDep.copy(configurations = Some(Provided.name)) +: base else base
 		},
@@ -743,13 +743,19 @@ object Classpaths
 				IvyActions.updateClassifiers(is, GetClassifiersConfiguration(mod, excludes, c, ivyScala), s.log)
 			}
 		},
+		sbtDependency in sbtPlugin <<= (appConfiguration, sbtVersion in sbtPlugin)(sbtDependencyForVersion),
 		sbtDependency in GlobalScope <<= appConfiguration { app =>
-			val id = app.provider.id
-			val base = ModuleID(id.groupID, id.name, id.version, crossVersion = id.crossVersioned)
-			IvySbt.substituteCross(base, app.provider.scalaProvider.version).copy(crossVersion = false)
+			sbtDependencyForVersion(app, app.provider.id.version)
 		}
 	)
-	def pluginProjectID: Initialize[ModuleID] = (sbtVersion in update, scalaVersion, projectID, sbtPlugin) { (sbtV, scalaV, pid, isPlugin) =>
+
+	def sbtDependencyForVersion(app: xsbti.AppConfiguration, version: String): ModuleID = {
+		val id = app.provider.id
+		val base = ModuleID(id.groupID, id.name, version, crossVersion = id.crossVersioned)
+		IvySbt.substituteCross(base, app.provider.scalaProvider.version).copy(crossVersion = false)
+	}
+
+	def pluginProjectID: Initialize[ModuleID] = (sbtVersion in sbtPlugin, scalaVersion, projectID, sbtPlugin) { (sbtV, scalaV, pid, isPlugin) =>
 		if(isPlugin) sbtPluginExtra(pid, sbtV, scalaV) else pid
 	}
 	def ivySbt0: Initialize[Task[IvySbt]] =
