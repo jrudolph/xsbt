@@ -68,10 +68,10 @@ object BuiltinCommands
 
 	def ConsoleCommands: Seq[Command] = Seq(ignore, exit, IvyConsole.command, act, nop)
 	def ScriptCommands: Seq[Command] = Seq(ignore, exit, Script.command, act, nop)
-	def DefaultCommands: Seq[Command] = Seq(ignore, help, about, loadProject, settingsCommand, tasks,
+	def DefaultCommands: Seq[Command] = Seq(ignore, help, about, startup, loadProject, settingsCommand, tasks,
 		projects, project, reboot, read, history, set, sessionCommand, inspect, loadProjectImpl, loadFailed, Cross.crossBuild, Cross.switchVersion,
 		setOnFailure, clearOnFailure, ifLast, multi, shell, continuous, eval, alias, append, last, lastGrep, boot, nop, call, exit, act)
-	def DefaultBootCommands: Seq[String] = LoadProject :: (IfLast + " " + Shell) :: Nil
+	def DefaultBootCommands: Seq[String] = "Startup" :: (IfLast + " " + Shell) :: Nil
 
 	def boot = Command.make(BootCommand)(bootParser)
 
@@ -396,9 +396,15 @@ object BuiltinCommands
 	{
 		val (s, base) = Project.loadAction(SessionVar.clear(s0), action)
 		IO.createDirectory(base)
-		val (eval, structure) = Load.defaultLoad(s, base, s.log, Project.inPluginProject(s), Project.extraBuilds(s))
+		val (eval, structure) = Load.defaultLoad(s.attributes.get(LoadBuild).get, s, base, Project.inPluginProject(s), Project.extraBuilds(s))
 		val session = Load.initialSession(structure, eval, s0)
 		SessionSettings.checkSession(session, s)
 		Project.setProject(session, structure, s)
 	}
+
+  val LoadBuild = AttributeKey[Load.LoadBuildConfiguration]("app-process", "The currently running application process")
+  def startup = Command.command("Startup") { s =>
+    val result = Load.globalLoad(s, s.log)
+    s.copy(attributes = s.attributes.put(LoadBuild, result))
+  }
 }

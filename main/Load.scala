@@ -25,21 +25,30 @@ object Load
 	import BuildPaths._
 	import BuildStreams._
 	import Locate.DefinesClass
-	
+
+  def globalLoad(state: State, log: Logger): LoadBuildConfiguration = {
+    val globalBase = getGlobalBase(state)
+    val definesClass = FileValueCache(Locate.definesClass _)
+    val rawConfig = defaultPreGlobal(state, definesClass.get, globalBase, log)
+    val config0 = defaultWithGlobal(state, rawConfig, globalBase, log)
+
+    config0
+  }
+
+  def completeLoad(state: State, baseDirectory: File, log: Logger, isPlugin: Boolean = false, topLevelExtras: List[URI] = Nil): (() => Eval, BuildStructure) =
+    defaultLoad(globalLoad(state, log), state, baseDirectory, isPlugin, topLevelExtras)
+
 	// note that there is State passed in but not pulled out
-	def defaultLoad(state: State, baseDirectory: File, log: Logger, isPlugin: Boolean = false, topLevelExtras: List[URI] = Nil): (() => Eval, BuildStructure) =
+	def defaultLoad(config0: LoadBuildConfiguration, state: State, baseDirectory: File, isPlugin: Boolean = false, topLevelExtras: List[URI] = Nil): (() => Eval, BuildStructure) =
 	{
-		val globalBase = getGlobalBase(state)
-		val base = baseDirectory.getCanonicalFile
-		val definesClass = FileValueCache(Locate.definesClass _)
-		val rawConfig = defaultPreGlobal(state, base, definesClass.get, globalBase, log)
-		val config0 = defaultWithGlobal(state, base, rawConfig, globalBase, log)
-		val config = if(isPlugin) enableSbtPlugin(config0) else config0.copy(extraBuilds = topLevelExtras)
+    val base = baseDirectory.getCanonicalFile
+
+    val config = if(isPlugin) enableSbtPlugin(config0) else config0.copy(extraBuilds = topLevelExtras)
 		val result = apply(base, state, config)
-		definesClass.clear()
+		//config.definesClass.get.clear()
 		result
 	}
-	def defaultPreGlobal(state: State, baseDirectory: File, definesClass: DefinesClass, globalBase: File, log: Logger): LoadBuildConfiguration =
+	def defaultPreGlobal(state: State, definesClass: DefinesClass, globalBase: File, log: Logger): LoadBuildConfiguration =
 	{
 		val provider = state.configuration.provider
 		val scalaProvider = provider.scalaProvider
@@ -57,18 +66,18 @@ object Load
 	def injectGlobal(state: State): Seq[Project.Setting[_]] =
 		(appConfiguration in GlobalScope :== state.configuration) +:
 		EvaluateTask.injectSettings
-	def defaultWithGlobal(state: State, base: File, rawConfig: LoadBuildConfiguration, globalBase: File, log: Logger): LoadBuildConfiguration =
+	def defaultWithGlobal(state: State, rawConfig: LoadBuildConfiguration, globalBase: File, log: Logger): LoadBuildConfiguration =
 	{
 		val globalPluginsDir = getGlobalPluginsDirectory(state, globalBase)
-		val withGlobal = loadGlobal(state, base, globalPluginsDir, rawConfig)
+		val withGlobal = loadGlobal(state, globalPluginsDir, rawConfig)
 		val globalSettings = configurationSources(getGlobalSettingsDirectory(state, globalBase))
-		loadGlobalSettings(base, globalBase, globalSettings, withGlobal)
+		loadGlobalSettings(globalBase, globalSettings, withGlobal)
 	}
 
-	def loadGlobalSettings(base: File, globalBase: File, files: Seq[File], config: LoadBuildConfiguration): LoadBuildConfiguration =
+	def loadGlobalSettings(globalBase: File, files: Seq[File], config: LoadBuildConfiguration): LoadBuildConfiguration =
 	{
 		val compiled: ClassLoader => Seq[Setting[_]]  =
-			if(files.isEmpty || base == globalBase) const(Nil) else buildGlobalSettings(globalBase, files, config)
+			if(files.isEmpty) const(Nil) else buildGlobalSettings(globalBase, files, config)
 		config.copy(injectSettings = config.injectSettings.copy(projectLoaded = compiled))
 	}
 	def buildGlobalSettings(base: File, files: Seq[File], config: LoadBuildConfiguration): ClassLoader => Seq[Setting[_]] =
@@ -77,8 +86,8 @@ object Load
 		val imports = baseImports ++ importAllRoot(config.globalPluginNames)
 		EvaluateConfigurations(eval, files, imports)
 	}
-	def loadGlobal(state: State, base: File, global: File, config: LoadBuildConfiguration): LoadBuildConfiguration =
-		if(base != global && global.exists)
+	def loadGlobal(state: State, global: File, config: LoadBuildConfiguration): LoadBuildConfiguration =
+		if(global.exists)
 			config.copy(globalPlugin = Some(GlobalPlugin.load(global, state, config)))
 		else
 			config
