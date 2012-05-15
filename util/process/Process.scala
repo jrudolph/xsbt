@@ -114,6 +114,8 @@ trait Process extends NotNull
 	def exitValue(): Int
 	/** Destroys this process. */
 	def destroy(): Unit
+
+  def hasFinished: Boolean
 }
 /** Represents a runnable process. */
 trait ProcessBuilder extends SourcePartialBuilder with SinkPartialBuilder

@@ -204,10 +204,11 @@ private abstract class CompoundProcess extends BasicProcess
 {
 	def destroy() { destroyer() }
 	def exitValue() = getExitValue().getOrElse(error("No exit code: process destroyed."))
+  def hasFinished: Boolean = finishChecker()
 
-	def start() = getExitValue
+  def start() = getExitValue
 	
-	protected lazy val (getExitValue, destroyer) =
+	protected lazy val (getExitValue, destroyer, finishChecker) =
 	{
 		val code = new SyncVar[Option[Int]]()
 		code.set(None)
@@ -215,7 +216,8 @@ private abstract class CompoundProcess extends BasicProcess
 		
 		(
 			Future { thread.join(); code.get },
-			() => thread.interrupt()
+			() => thread.interrupt(),
+      () => thread.getState == Thread.State.TERMINATED
 		)
 	}
 	
@@ -373,6 +375,9 @@ private class DummyProcess(action: => Int) extends Process
 	private[this] val exitCode = Future(action)
 	override def exitValue() = exitCode()
 	override def destroy() {}
+
+  // can't implement this here
+  override def hasFinished: Boolean = false
 }
 /** Represents a simple command without any redirection or combination. */
 private[sbt] class SimpleProcessBuilder(p: JProcessBuilder) extends AbstractProcessBuilder
@@ -413,6 +418,15 @@ private class SimpleProcess(p: JProcess, inputThread: Thread, outputThreads: Lis
 		try { p.destroy() }
 		finally { inputThread.interrupt() }
 	}
+
+  override def hasFinished =
+    try {
+      p.exitValue()
+      true
+    } catch {
+      case e: IllegalThreadStateException =>
+      false
+    }
 }
 
 private class FileOutput(file: File, append: Boolean) extends OutputStreamBuilder(new FileOutputStream(file, append), file.getAbsolutePath)
@@ -446,6 +460,8 @@ private final class ThreadProcess(thread: Thread, success: SyncVar[Boolean]) ext
 		if(success.get) 0 else 1
 	}
 	override def destroy() { thread.interrupt() }
+
+  def hasFinished: Boolean = thread.getState == Thread.State.TERMINATED
 }
 
 object Uncloseable
