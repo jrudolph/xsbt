@@ -39,9 +39,25 @@ object Launch
 		explicit(currentDirectory, resolved, arguments)
 	}
 
-	def explicit(currentDirectory: File, explicit: LaunchConfiguration, arguments: List[String]): Option[Int] =
-		launch( run(Launcher(explicit)) ) (
-			new RunConfiguration(explicit.getScalaVersion, explicit.app.toID, currentDirectory, arguments) )
+  def explicit(currentDirectory: File, explicit: LaunchConfiguration, arguments: List[String]): Option[Int] = {
+    val configuredId = explicit.app.toID
+    val Version = """0\.(\d+)\.(\d+)(?:-(.*))?""".r
+    def groupIdByVersion(version: String) = version match {
+      case "0.11.3" => "org.scala-sbt"
+      case x if x startsWith("0.11") => "org.scala-tools.sbt"
+      case x if x startsWith("0.12") => "org.scala-sbt"
+    }
+    def crossVersioned(version: String) = version match {
+      case Version("11", _, _) => true
+      case _ => false
+    }
+
+    val version = configuredId.version
+    val patchedId = configuredId.copy(groupID = groupIdByVersion(version), crossVersioned = crossVersioned(version))
+
+    launch( run(Launcher(explicit)) ) (
+      new RunConfiguration(explicit.getScalaVersion, patchedId, currentDirectory, arguments) )
+  }
 
 	def run(launcher: xsbti.Launcher)(config: RunConfiguration): xsbti.MainResult =
 	{
