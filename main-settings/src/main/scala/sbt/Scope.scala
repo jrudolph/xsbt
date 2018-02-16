@@ -100,11 +100,27 @@ object Scope {
       case ProjectRef(uri, id) => ProjectRef(resolveBuild(current, uri), id)
       case ThisProject         => ThisProject // haven't exactly "resolved" anything..
     }
-  def resolveBuild(current: URI, uri: URI): URI =
+  def resolveBuild(current: URI, uri: URI): URI = {
+
     if (!uri.isAbsolute && current.isOpaque && uri.getSchemeSpecificPart == ".")
       current // this handles the shortcut of referring to the current build using "."
-    else
-      IO.directoryURI(current resolve uri)
+    else {
+      def directoryURI(uri: URI): URI = {
+        if (!uri.isAbsolute) return uri; //assertAbsolute(uri)
+        val str = uri.toASCIIString
+        val dirUri =
+          if (str.endsWith("/") || uri.getScheme != IO.FileScheme || Option(uri.getRawFragment).isDefined)
+            uri
+          else new URI(str + "/")
+        dirUri.normalize
+      }
+
+      val res = directoryURI(current resolve uri)
+      //if (res != uri)
+      //println(s"Resolving $current -> $uri ${res == uri} ${res eq uri}")
+      res
+    }
+  }
 
   def resolveReference(current: URI,
                        rootProject: URI => String,
