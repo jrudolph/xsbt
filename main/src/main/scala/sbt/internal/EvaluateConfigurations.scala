@@ -8,16 +8,22 @@
 package sbt
 package internal
 
-import sbt.internal.util.{ complete, AttributeEntry, AttributeKey, LineRange, MessageOnlyException, RangePosition, Settings }
-
+import sbt.internal.util.{AttributeEntry, AttributeKey, LineRange, MessageOnlyException, RangePosition, Settings, complete}
 import java.io.File
-import compiler.{ Eval, EvalImports }
+
+import compiler.{Eval, EvalImports}
 import complete.DefaultParsers.validID
-import Def.{ ScopedKey, Setting }
+import Def.{ScopedKey, Setting}
 import Scope.GlobalScope
 import sbt.internal.parser.SbtParser
-
+import sbt.io.Hash
 import sbt.io.IO
+import sbt.io.Using
+import sbt.util.BasicCache
+import sbt.util.CacheStoreFactory
+import sbt.util.PlainInput
+import sbt.util.PlainOutput
+import sjsonnew.support.scalajson.unsafe.Converter
 
 /**
  *  This file is responsible for compiling the .sbt files used to configure sbt builds.
@@ -216,13 +222,55 @@ private[sbt] object EvaluateConfigurations {
    * Splits a set of lines into (imports, expressions).  That is,
    * anything on the right of the tuple is a scala expression (definition or setting).
    */
-  private[sbt] def splitExpressions(file: File, lines: Seq[String]): (Seq[(String, Int)], Seq[(String, LineRange)]) =
+  private[sbt] def splitExpressions0(file: File, lines: Seq[String]): (Seq[(String, Int)], Seq[(String, LineRange)]) =
     {
       val split = SbtParser(file, lines)
       // TODO - Look at pulling the parsed expression trees from the SbtParser and stitch them back into a different
       // scala compiler rather than re-parsing.
       (split.imports, split.settings)
     }
+
+  //private val storeFac = CacheStoreFactory.directory(new java.io.File("/tmp/sbt"))
+  private[sbt] def splitExpressions(file: File, lines: Seq[String]): (Seq[(String, Int)], Seq[(String, LineRange)]) =
+  {
+    import java.io.File
+    val hash = Hash.toHex(Hash(file))
+    val cacheFile = new File(s"/tmp/sbt/$hash.exprs.json")
+
+    import CacheStoreFactory.jvalueIsoString
+    import sbt.internal.codec.JsonProtocol._
+
+    if (cacheFile.exists()) {
+      println(s"Found file for $file at $cacheFile")
+      val res = Using.fileInputStream(cacheFile)(stream => new PlainInput(stream, Converter).read[ImportsAndExpressions]())
+      (
+        res.imports.map(is => (is.text, is.startLine)),
+        res.expressions.map(exps => (exps.text, LineRange(exps.startLine, exps.endLine)))
+      )
+    } else {
+      println(s"Generating file for $file at $cacheFile")
+      val res@(imports, expressions) = splitExpressions0(file, lines)
+      val data =
+        ImportsAndExpressions(
+          imports.map(is => ImportPos(is._1, is._2))(scala.collection.breakOut),
+          expressions.map(exps => ExpressionPos(exps._1, exps._2.start, exps._2.end))(scala.collection.breakOut)
+        )
+
+      cacheFile.getParentFile.mkdirs()
+      Using.fileOutputStream(append = false)(cacheFile) { stream =>
+        new PlainOutput(stream, Converter).write(data)
+      }
+      res
+    }
+
+    /*???
+
+    val res = splitExpressions0(file, lines)
+    println(s"For file $file")
+    println(res)
+    res*/
+    //(split.imports, split.settings)
+  }
 
   private[this] def splitSettingsDefinitions(lines: Seq[(String, LineRange)]): (Seq[(String, LineRange)], Seq[(String, LineRange)]) =
     lines partition { case (line, range) => isDefinition(line) }

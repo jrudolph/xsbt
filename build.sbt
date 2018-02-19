@@ -392,7 +392,7 @@ lazy val mainSettingsProj = (project in file("main-settings"))
 
 // The main integration project for sbt.  It brings all of the projects together, configures them, and provides for overriding conventions.
 lazy val mainProj = (project in file("main"))
-  .enablePlugins(ContrabandPlugin)
+  .enablePlugins(ContrabandPlugin, JsonCodecPlugin)
   .dependsOn(logicProj, actionsProj, mainSettingsProj, runProj, commandProj, collectionProj)
   .settings(
     testedBaseSettings,

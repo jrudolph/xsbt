@@ -1,0 +1,20 @@
+package sbt.internal
+@target(Scala)
+@codecPackage("sbt.internal.codec")
+@fullCodec("JsonProtocol")
+
+type ImportPos {
+  text: String!
+  startLine: Int!
+}
+
+type ExpressionPos {
+  text: String!
+  startLine: Int!
+  endLine: Int!
+}
+
+type ImportsAndExpressions {
+  imports: [sbt.internal.ImportPos]
+  expressions: [sbt.internal.ExpressionPos]
+}
