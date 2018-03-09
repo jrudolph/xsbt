@@ -15,6 +15,8 @@ import sbt.librarymanagement.syntax._
 import sbt.util.{ CacheStore, CacheStoreFactory, Logger, Tracked }
 import sbt.io.IO
 
+import scala.util.Try
+
 private[sbt] object LibraryManagement {
 
   private type UpdateInputs = (Long, ModuleSettings, UpdateConfiguration)
@@ -79,11 +81,12 @@ private[sbt] object LibraryManagement {
     /* Skip resolve if last output exists, otherwise error. */
     def skipResolve(cache: CacheStore): UpdateInputs => UpdateReport = {
       import sbt.librarymanagement.LibraryManagementCodec._
-      Tracked.lastOutput[UpdateInputs, UpdateReport](cache) {
-        case (_, Some(out)) => markAsCached(out)
-        case _ =>
-          sys.error("Skipping update requested, but update has not previously run successfully.")
-      }
+      inputs =>
+        Try { cache.read[UpdateReport]() }.toOption match {
+          case Some(out) => markAsCached(out)
+          case _ =>
+            sys.error("Skipping update requested, but update has not previously run successfully.")
+        }
     }
 
     // Mark UpdateReport#stats as "cached." This is used by the dependers later
