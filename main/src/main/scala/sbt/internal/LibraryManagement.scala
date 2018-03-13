@@ -97,9 +97,18 @@ private[sbt] object LibraryManagement {
     def doResolve(cache: CacheStore): UpdateInputs => UpdateReport = {
       val doCachedResolve = { (inChanged: Boolean, updateInputs: UpdateInputs) =>
         import sbt.librarymanagement.LibraryManagementCodec._
-        val cachedResolve = Tracked.lastOutput[UpdateInputs, UpdateReport](cache) {
-          case (_, Some(out)) if upToDate(inChanged, out) => markAsCached(out)
-          case _                                          => resolve(updateInputs)
+        val cachedResolve = { updateInputs: UpdateInputs =>
+          val start = System.nanoTime()
+          val res =
+            Try { cache.read[UpdateReport]() }.toOption match {
+              case Some(out) if upToDate(inChanged, out) => markAsCached(out)
+              case _ =>
+                val res = resolve(updateInputs)
+                cache.write(res)
+                res
+            }
+          println(s"Resolution for $module took ${(System.nanoTime() - start) / 1000000} ms")
+          res
         }
         import scala.util.control.Exception.catching
         catching(classOf[NullPointerException], classOf[OutOfMemoryError])
